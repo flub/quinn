@@ -13,7 +13,8 @@ use std::{
     time::Instant,
 };
 
-use socket2::SockRef;
+use once_cell::race::OnceBool;
+use socket2::{Domain, Protocol, SockRef, Socket, Type};
 
 use super::{
     cmsg, log_sendmsg_error, EcnCodepoint, RecvMeta, Transmit, UdpSockRef, UdpState,
@@ -148,7 +149,12 @@ fn init(io: SockRef<'_>) -> io::Result<()> {
         // Linux's IP_PMTUDISC_PROBE allows us to operate under interface MTU rather than the
         // kernel's path MTU guess, but actually disabling fragmentation requires this too. See
         // __ip6_append_data in ip6_output.c.
-        set_socket_option(&*io, libc::IPPROTO_IPV6, libc::IPV6_DONTFRAG, OPTION_ON)?;
+        match set_socket_option(&*io, libc::IPPROTO_IPV6, libc::IPV6_DONTFRAG, OPTION_ON) {
+            Err(err) if !may_fragment() => {
+                return Err(err);
+            }
+            _ => (),
+        }
     }
 
     Ok(())
@@ -705,9 +711,26 @@ pub(crate) const BATCH_SIZE: usize = 32;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub(crate) const BATCH_SIZE: usize = 1;
 
+/// Cache of whether our kernel supports the IPV6_DONTFRAG socket option.
+static MAY_FRAGMENT: OnceBool = OnceBool::new();
+
+/// Tests if the IPV6_DONTFRAG option can be set.
+fn check_ipv6_dontfrag() -> bool {
+    match Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP)).map(|sock| {
+        set_socket_option(&sock, libc::IPPROTO_IPV6, libc::IPV6_DONTFRAG, OPTION_ON).is_err()
+    }) {
+        Ok(val) => val,
+        Err(_) => {
+            // default to no fragmentation as only very old kernels don't support it, this
+            // was the behaviour before detection.
+            false
+        }
+    }
+}
+
 #[inline]
 pub(crate) fn may_fragment() -> bool {
-    false
+    MAY_FRAGMENT.get_or_init(check_ipv6_dontfrag)
 }
 
 #[cfg(target_os = "linux")]
