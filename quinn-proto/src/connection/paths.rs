@@ -57,6 +57,7 @@ impl PathData {
         now: Instant,
         validated: bool,
         config: &TransportConfig,
+        last_observed_addr_report: Option<ObservedAddr>,
     ) -> Self {
         let congestion = config
             .congestion_controller_factory
@@ -96,7 +97,7 @@ impl PathData {
             first_packet_after_rtt_sample: None,
             in_flight: InFlight::new(),
             observed_addr_sent: false,
-            last_observed_addr_report: None,
+            last_observed_addr_report,
             first_packet: None,
         }
     }
@@ -122,7 +123,7 @@ impl PathData {
             first_packet_after_rtt_sample: prev.first_packet_after_rtt_sample,
             in_flight: InFlight::new(),
             observed_addr_sent: false,
-            last_observed_addr_report: None,
+            last_observed_addr_report: prev.last_observed_addr_report.clone(),
             first_packet: None,
         }
     }
@@ -172,6 +173,7 @@ impl PathData {
                     None
                 } else if prev.ip == observed.ip && prev.port == observed.port {
                     // keep track of the last seq_no but do not report the address as updated
+                    tracing::info!("observed addr should be the same");
                     prev.seq_no = observed.seq_no;
                     None
                 } else {
@@ -183,7 +185,7 @@ impl PathData {
             }
             None => {
                 let addr = (observed.ip, observed.port).into();
-                tracing::info!(%addr, "observed addr");
+                tracing::info!(%addr, "observed addr, was none");
                 self.last_observed_addr_report = Some(observed);
                 Some(addr)
             }

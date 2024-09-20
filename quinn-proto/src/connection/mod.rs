@@ -294,7 +294,7 @@ impl Connection {
                 now,
                 if pref_addr_cid.is_some() { 2 } else { 1 },
             ),
-            path: PathData::new(remote, allow_mtud, None, now, path_validated, &config),
+            path: PathData::new(remote, allow_mtud, None, now, path_validated, &config, None),
             allow_mtud,
             local_ip,
             prev_path: None,
@@ -2925,6 +2925,7 @@ impl Connection {
                         }
                     } else {
                         // include in migration
+                        tracing::info!("setting migration observed addr");
                         migration_observed_addr = Some(observed)
                     }
                 }
@@ -2974,7 +2975,7 @@ impl Connection {
     }
 
     fn migrate(&mut self, now: Instant, remote: SocketAddr, observed_addr: Option<ObservedAddr>) {
-        trace!(%remote, "migration initiated");
+        tracing::info!(%remote, "migration initiated");
         // Reset rtt/congestion state for new path unless it looks like a NAT rebinding.
         // Note that the congestion window will not grow until validation terminates. Helps mitigate
         // amplification attacks performed by spoofing source addresses.
@@ -2991,6 +2992,7 @@ impl Connection {
                 now,
                 false,
                 &self.config,
+                self.path.last_observed_addr_report.clone(),
             )
         };
         if let Some(report) = observed_addr {

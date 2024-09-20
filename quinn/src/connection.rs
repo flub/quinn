@@ -908,7 +908,7 @@ impl ConnectionRef {
                 runtime,
                 send_buffer: Vec::new(),
                 buffered_transmit: None,
-                observed_external_addr: watch::Sender::new(None),
+                observed_external_addr: watch::channel(None).0,
             }),
             shared: Shared::default(),
         }))
